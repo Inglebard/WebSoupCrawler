@@ -11,7 +11,7 @@ usage: WebSoupCrawler.py [-h] [-u url] [-d request_delay] -db database
 
 WebSoupCrawler require BeautifulSoup to works properly.
 
-WebSoupCrawler is a really simple web crawler. It may contains bug and is not perfect. I'm pretty sure than other web crawlers are better. I do not recommend to use WebSoupCrawler in production environnment.
+WebSoupCrawler is a really simple web crawler. It may contains bug and it is not perfect. I'm pretty sure than other web crawlers are better. I do not recommend to use WebSoupCrawler in production environnment.
 
 ## Why ?
 
@@ -44,7 +44,7 @@ id|url|state(0=discovered,1=Analysed,2=Extracted)|
 
 ` ./WebSoupCrawler.py -s "title" -db googleplay.sqlite3 -p extract `
 
-This command extract the title on all the page and save in on another table of the database :
+This command extract the title on all the pages and save in on another table of the database :
 
 ```
 Table : Url_data
@@ -56,9 +56,9 @@ id|url|data|
 5|https://play.google.com/store/apps/collection/editors_choice|[<title id="main-title">Choix de l'ĂŠquipe â Applications Android sur GoogleÂ Play</title>]
 ```
 
-You can also add mutiple selector to extract data :
+You can also add mutiple selectors to extract data :
 
 ` ./WebSoupCrawler.py -s "title,div.something,#footer" -db googleplay.sqlite3 -p extract `
 
 
-When all the data are extracted, you can explorer them whit a sqlite browser like : [sqlitebrowser](http://sqlitebrowser.org/)
+When all the datas are extracted, you can explore them with a sqlite browser like : [sqlitebrowser](http://sqlitebrowser.org/)
