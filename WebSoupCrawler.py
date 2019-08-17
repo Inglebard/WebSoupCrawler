@@ -4,13 +4,14 @@
 import sqlite3
 import sys
 import argparse
-import urllib.request
+import requests
 import re
+import os
 import time
+import importlib
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
-
-
+import glob
 
 class WebSoupCrawler() :
 
@@ -22,6 +23,8 @@ class WebSoupCrawler() :
     STATE_EXTRACTED = 2
 
     def __init__(self):
+
+
         self.url="";
         self.delay="";
         self.database="";
@@ -33,7 +36,20 @@ class WebSoupCrawler() :
         self.root_url_parsed="";
         self.con = None
         self.cur = None
+        self.dynamic_modules = []
 
+
+
+        modules_dir="modules"
+        dynamic_modules_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)),modules_dir+"/")
+        dynamic_modules_path=os.path.join(dynamic_modules_dir,"*.py")
+        modules_files = glob.glob(dynamic_modules_path)
+
+        for module_path in modules_files:
+            basename_module=os.path.basename(module_path)[:-3]
+            module=importlib.import_module(modules_dir+'.'+basename_module)
+            module_class = getattr(module, basename_module)
+            self.dynamic_modules.append(module_class())
 
         self.parse_args()
         self.init_process()
@@ -86,12 +102,9 @@ class WebSoupCrawler() :
 
             if self.process == WebSoupCrawler.PROCESS_ANALYSE :
                 try :
-                    html = urllib.request.urlopen(self.url).read()
-                except urllib.error.URLError as e :
+                    html =  requests.get(self.url).text
+                except e :
                     print(e.reason)
-                    sys.exit(1)
-                except urllib.error.HTTPError as e1 :
-                    print(e1.reason)
                     sys.exit(1)
 
                 try :
@@ -150,28 +163,25 @@ class WebSoupCrawler() :
                     if datarow:
                         if self.process == WebSoupCrawler.PROCESS_ANALYSE and datarow[2] == WebSoupCrawler.STATE_DISCOVERED:
                             try :
-                                htmlresult = urllib.request.urlopen(datarow[1]).read()
+                                htmlresult =  requests.get(datarow[1]).text
                                 self.store_url(htmlresult,urlparse(datarow[1]))
-                            except urllib.error.URLError as e :
+                            except e :
                                 print(e.reason)
-                            except urllib.error.HTTPError as e1 :
-                                print(e1.reason)
                             self.cur.execute('''UPDATE `Url` SET `state`=? WHERE id=?''',(WebSoupCrawler.STATE_ANALYSED,datarow[0]))
                             self.con.commit()
 
                         if self.process == WebSoupCrawler.PROCESS_EXTRACT and datarow[2] == WebSoupCrawler.STATE_ANALYSED:
                             try :
-                                htmlresult = urllib.request.urlopen(datarow[1]).read()
+                                htmlresult =  requests.get(datarow[1]).text
                                 self.extract_data(htmlresult,datarow[1])
-                            except urllib.error.URLError as e :
+                            except e :
                                 print(e.reason)
-                            except urllib.error.HTTPError as e1 :
-                                print(e1.reason)
                             self.cur.execute('''UPDATE `Url` SET `state`=? WHERE id=?''',(WebSoupCrawler.STATE_EXTRACTED,datarow[0]))
                             self.con.commit()
                         time.sleep(self.delay)
 
     def store_url(self,html_data,parent_url) :
+        print(parent_url)
         htmlparse = BeautifulSoup(html_data,'html.parser')
         for link in htmlparse.find_all('a') :
             url_str=link.get('href')
@@ -198,6 +208,8 @@ class WebSoupCrawler() :
                 for row in rows :
                     if row[0] == 0 :
                         try :
+                            for module in self.dynamic_modules :
+                                module.analysed(url_str,html_data,parent_url)
                             self.cur.execute('''INSERT INTO `Url`(`url`, `state`) VALUES (?,?)''',(url_str,WebSoupCrawler.STATE_DISCOVERED))
                             self.con.commit()
                         except e:
@@ -214,13 +226,14 @@ class WebSoupCrawler() :
             for row in rows :
                 if row[0] == 0 :
                     try :
+                        for module in self.dynamic_modules :
+                            module.extracted(data,html_data,parent_url)
                         self.cur.execute('''INSERT INTO `Url_data`(`url`, `data`) VALUES (?,?)''',(parent_url,str(data)))
                         self.con.commit()
                     except e:
                         print('Error : ', e.reason)
 
     def to_follow_url(self,currenturl) :
-
         if self.follow_url :
             regexfollow = re.compile(self.follow_url)
             if currenturl.netloc == self.root_url_parsed.netloc or regexfollow.match(currenturl.geturl()):
