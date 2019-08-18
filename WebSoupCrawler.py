@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import sqlite3
+import hashlib
 import sys
 import argparse
 import requests
@@ -11,9 +11,16 @@ import time
 import importlib
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
+from core.Database import Database
 import glob
 
 class WebSoupCrawler() :
+
+    DATA_PATH = "data/"
+    CACHE_PATH = "cache/"
+    MODULES_PATH = "modules/"
+
+    MODULES_DIR = "modules"
 
     PROCESS_ANALYSE = "analyse"
     PROCESS_EXTRACT = "extract"
@@ -33,21 +40,27 @@ class WebSoupCrawler() :
         self.follow_url="";
         self.exclude_url="";
 
+        self.cache=False;
+        self.database_limit="";
+        self.database_driver="";
+        self.database_host="";
+        self.database_user="";
+        self.database_password="";
+        self.database_port="";
+
         self.root_url_parsed="";
-        self.con = None
-        self.cur = None
+        self.db = None
         self.dynamic_modules = []
 
 
 
-        modules_dir="modules"
-        dynamic_modules_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)),modules_dir+"/")
+        dynamic_modules_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)),WebSoupCrawler.MODULES_PATH)
         dynamic_modules_path=os.path.join(dynamic_modules_dir,"*.py")
         modules_files = glob.glob(dynamic_modules_path)
 
         for module_path in modules_files:
             basename_module=os.path.basename(module_path)[:-3]
-            module=importlib.import_module(modules_dir+'.'+basename_module)
+            module=importlib.import_module(WebSoupCrawler.MODULES_DIR+'.'+basename_module)
             module_class = getattr(module, basename_module)
             self.dynamic_modules.append(module_class())
 
@@ -59,14 +72,21 @@ class WebSoupCrawler() :
         parser = argparse.ArgumentParser(description="Simple web crawler.")
         parser.add_argument('-u', '--url', metavar='url', default="", type=str, help="Root url to parse.")
         parser.add_argument('-d', '--delay', metavar='request_delay', default=1, type=float, help="Delay between two requests.")
-        parser.add_argument('-db', '--database', metavar='database', type=str, help="Sqlite database to store result", required=True)
         parser.add_argument('-p', '--process', metavar='process', default="analyse", choices=['analyse', 'extract'], help="analyse : To parse url in web pages \n extract : to retrieve data")
         parser.add_argument('-s', '--selector', metavar='selector', default="", type=str, help="Css selector to extract data. Ignore if -p analyse used.")
         parser.add_argument('-f', '--follow_url', metavar='follow_url', default="", type=str, help="Add url (regex) to follow. Default : Current domain only")
         parser.add_argument('-e', '--exclude_url', metavar='exclude_url', default="", type=str, help="Exclude url (regex) to follow. Default : Current domain only")
 
-        args = parser.parse_args()
+        parser.add_argument('-c', '--cache', action='store_true', required=False,  help="Cache html result when requested.Can improve performance but will use disk space. Default : False")
+        parser.add_argument('-db', '--database', metavar='database', type=str, help="Sqlite database to store result", required=True)
+        parser.add_argument('-db_l', '--database_limit', metavar='limit', default=100, type=int, help="Limit request to database. Allow multiple instance Default: 100")
+        parser.add_argument('-db_d', '--database_driver', metavar='database_driver', default="sqlite", choices=['sqlite', 'mysql', 'mongodb'], help="Select database type ('sqlite', 'mysql', 'mongodb)")
+        parser.add_argument('-db_h', '--database_host', metavar='database_host', default="localhost", type=str, help="Database host. Default: localhost")
+        parser.add_argument('-db_u', '--database_user', metavar='database_user', default="", type=str, help="Database user")
+        parser.add_argument('-db_pwd', '--database_password', metavar='database_password', default="", type=str, help="Database password")
+        parser.add_argument('-db_p', '--database_port', metavar='database_port', default=0, type=int, help="Database port. Default : Will use default port (Depend of database type)")
 
+        args = parser.parse_args()
 
         self.url=args.url.strip();
         self.delay=args.delay;
@@ -75,6 +95,14 @@ class WebSoupCrawler() :
         self.selector=args.selector;
         self.follow_url=args.follow_url;
         self.exclude_url=args.exclude_url
+
+        self.cache=args.cache;
+        self.database_limit=args.database_limit
+        self.database_driver=args.database_driver;
+        self.database_host=args.database_host
+        self.database_user=args.database_user;
+        self.database_password=args.database_password
+        self.database_port=args.database_port;
 
         if self.process == WebSoupCrawler.PROCESS_ANALYSE and not self.url :
             sys.stderr.write('Error: %s\n' % "url parameter is required to analyse webpage")
@@ -86,52 +114,20 @@ class WebSoupCrawler() :
             parser.print_help()
             sys.exit(2)
 
-
     def init_process(self) :
 
         self.root_url_parsed=urlparse(self.url)
 
-        try:
-            self.con = sqlite3.connect(self.database)
-            self.cur = self.con.cursor()
-            self.cur.execute('SELECT SQLITE_VERSION()')
-            data = self.cur.fetchone()
-            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url(id integer NOT NULL PRIMARY KEY AUTOINCREMENT, url text, state integer, process integer)''')
-            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url_data(id integer NOT NULL PRIMARY KEY AUTOINCREMENT, url text, data text)''')
-            self.con.commit()
+        self.db=Database(os.path.join(os.path.dirname(os.path.abspath(__file__)),WebSoupCrawler.DATA_PATH),self.database,self.database_driver,self.database_limit,self.database_host,self.database_user,self.database_password,self.database_port).getDatabase()
 
-            if self.process == WebSoupCrawler.PROCESS_ANALYSE :
-                try :
-                    html =  requests.get(self.url).text
-                except :
-                    print('Error : ', sys.exc_info()[0])
-                    sys.exit(1)
 
-                try :
-                    self.store_url(html,self.root_url_parsed)
-                    self.mainloop()
-                except sqlite3.Error as e :
-                    print("Error : ", e)
-                    sys.exit(1)
-                finally :
-                    if self.con :
-                        self.con.close()
+        if self.process == WebSoupCrawler.PROCESS_ANALYSE :
+            html,cached =  self.fetch_data(self.url)
+            self.store_url(html,self.root_url_parsed)
+            self.mainloop()
 
-            elif self.process == WebSoupCrawler.PROCESS_EXTRACT :
-                try :
-                    self.mainloop()
-                except sqlite3.Error as e :
-                    print("Error : ", e)
-                    sys.exit(1)
-                finally :
-                    if self.con :
-                        self.con.close()
-        except sqlite3.Error as e :
-            print("Error : ", e)
-            sys.exit(1)
-        finally :
-            if self.con :
-                self.con.close()
+        elif self.process == WebSoupCrawler.PROCESS_EXTRACT :
+            self.mainloop()
 
 
 
@@ -139,12 +135,12 @@ class WebSoupCrawler() :
         continue_loop=True
         while continue_loop :
             result = ()
+            rows=''
             if self.process == WebSoupCrawler.PROCESS_ANALYSE :
-                result=self.cur.execute('''SELECT * FROM `Url` WHERE state=?''',(WebSoupCrawler.STATE_DISCOVERED,))
+                rows=self.db.getUrlbyState(WebSoupCrawler.STATE_DISCOVERED)
             elif self.process == WebSoupCrawler.PROCESS_EXTRACT :
-                result=self.cur.execute('''SELECT * FROM `Url` WHERE state=?''',(WebSoupCrawler.STATE_ANALYSED,))
+                rows=self.db.getUrlbyState(WebSoupCrawler.STATE_ANALYSED)
 
-            rows = self.cur.fetchall()
             print(len(rows))
             if len(rows) <= 0 :
                 continue_loop = False
@@ -155,30 +151,23 @@ class WebSoupCrawler() :
                     result2=()
 
                     if self.process == WebSoupCrawler.PROCESS_ANALYSE :
-                        result2=self.cur.execute('''SELECT * FROM `Url` WHERE state=? and id=?''',(WebSoupCrawler.STATE_DISCOVERED,row[0]))
+                        datarow=self.db.getUrlbyStateAndId(WebSoupCrawler.STATE_DISCOVERED,row[0])
                     elif self.process == WebSoupCrawler.PROCESS_EXTRACT :
-                        result2=self.cur.execute('''SELECT * FROM `Url` WHERE state=? and id=?''',(WebSoupCrawler.STATE_ANALYSED,row[0]))
+                        datarow=self.db.getUrlbyStateAndId(WebSoupCrawler.STATE_ANALYSED,row[0])
 
-                    datarow=self.cur.fetchone()
                     if datarow:
+                        cached=False
                         if self.process == WebSoupCrawler.PROCESS_ANALYSE and datarow[2] == WebSoupCrawler.STATE_DISCOVERED:
-                            try :
-                                htmlresult =  requests.get(datarow[1]).text
-                                self.store_url(htmlresult,urlparse(datarow[1]))
-                            except :
-                                print('Error : ', sys.exc_info()[0])
-                            self.cur.execute('''UPDATE `Url` SET `state`=? WHERE id=?''',(WebSoupCrawler.STATE_ANALYSED,datarow[0]))
-                            self.con.commit()
+                            htmlresult, cached =  self.fetch_data(datarow[1])
+                            self.store_url(htmlresult,urlparse(datarow[1]))
+                            self.db.updateUrlbyStateAndId(WebSoupCrawler.STATE_ANALYSED,datarow[0])
 
                         if self.process == WebSoupCrawler.PROCESS_EXTRACT and datarow[2] == WebSoupCrawler.STATE_ANALYSED:
-                            try :
-                                htmlresult =  requests.get(datarow[1]).text
-                                self.extract_data(htmlresult,datarow[1])
-                            except :
-                                print('Error : ', sys.exc_info()[0])
-                            self.cur.execute('''UPDATE `Url` SET `state`=? WHERE id=?''',(WebSoupCrawler.STATE_EXTRACTED,datarow[0]))
-                            self.con.commit()
-                        time.sleep(self.delay)
+                            htmlresult, cached = self.fetch_data(datarow[1])
+                            self.extract_data(htmlresult,datarow[1])
+                            self.db.updateUrlbyStateAndId(WebSoupCrawler.STATE_EXTRACTED,datarow[0])
+                        if not cached :
+                            time.sleep(self.delay)
 
     def store_url(self,html_data,parent_url) :
         print(parent_url)
@@ -203,15 +192,13 @@ class WebSoupCrawler() :
             currenturl=urlparse(url_str)
 
             if self.to_follow_url(currenturl) :
-                result=self.cur.execute('SELECT count(*) as "nb_url" FROM `Url` WHERE url=?',(url_str,))
-                rows=self.cur.fetchall()
+                rows=self.db.countUrlbyUrl(url_str)
                 for row in rows :
                     if row[0] == 0 :
                         try :
                             for module in self.dynamic_modules :
                                 module.analysed(url_str,html_data,parent_url)
-                            self.cur.execute('''INSERT INTO `Url`(`url`, `state`) VALUES (?,?)''',(url_str,WebSoupCrawler.STATE_DISCOVERED))
-                            self.con.commit()
+                            self.db.insertUrl(url_str,WebSoupCrawler.STATE_DISCOVERED)
                         except:
                             print('Error : ', sys.exc_info()[0])
 
@@ -221,15 +208,13 @@ class WebSoupCrawler() :
         for selector in self.selector.split(",") :
             data+=htmlparse.select(selector)
         if(data) :
-            result=self.cur.execute('SELECT count(*) as "nb_result" FROM `Url_data` WHERE url=? AND data=?',(parent_url,str(data)))
-            rows=self.cur.fetchall()
+            rows=self.db.countUrl_databyUrlAndData(parent_url,str(data))
             for row in rows :
                 if row[0] == 0 :
                     try :
                         for module in self.dynamic_modules :
                             module.extracted(data,html_data,parent_url)
-                        self.cur.execute('''INSERT INTO `Url_data`(`url`, `data`) VALUES (?,?)''',(parent_url,str(data)))
-                        self.con.commit()
+                        self.db.insertUrl_data(parent_url,str(data))
                     except:
                         print('Error : ', sys.exc_info()[0])
 
@@ -253,6 +238,34 @@ class WebSoupCrawler() :
                 return True
             else :
                 return False
+
+    def request_data(self,url) :
+        html=""
+        try :
+            html =  requests.get(url).text
+        except :
+            print('Error : ', sys.exc_info()[0])
+        return html
+
+    def fetch_data(self,url) :
+
+        html=""
+        cached=False;
+        if self.cache == True :
+            cachefilename=hashlib.sha256(self.url.encode()).hexdigest()+"_"+hashlib.sha256(url.encode()).hexdigest()+".html"
+            cache_path=WebSoupCrawler.CACHE_PATH+cachefilename
+            if os.path.isfile(cache_path) == True :
+                with open(cache_path, 'r') as cache_file:
+                    html = cache_file.read()
+                    cached=True
+            else :
+                html=self.request_data(url)
+                with open(cache_path, 'w') as cache_file:
+                    cache_file.write(html)
+        else :
+            html=self.request_data(url)
+
+        return html,cached
 
 if __name__ == "__main__":
     WebSoupCrawler()
