@@ -67,7 +67,7 @@ class Database_mysql() :
         return self.con.commit()
 
     def countUrl_databyUrlAndData(self,url,data) :
-        self.cur.execute('SELECT count(*) as "nb_result" FROM `Url_data` WHERE url=%s AND data=%s',(url,data))        
+        self.cur.execute('SELECT count(*) as "nb_result" FROM `Url_data` WHERE url=%s AND data=%s',(url,data))
         return self.cur.fetchall()
 
     def insertUrl_data(self,url,data) :

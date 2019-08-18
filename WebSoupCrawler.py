@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import hashlib
+import urllib
 import sys
 import argparse
 import requests
@@ -195,12 +196,9 @@ class WebSoupCrawler() :
                 rows=self.db.countUrlbyUrl(url_str)
                 for row in rows :
                     if row[0] == 0 :
-                        try :
-                            for module in self.dynamic_modules :
-                                module.analysed(url_str,html_data,parent_url)
-                            self.db.insertUrl(url_str,WebSoupCrawler.STATE_DISCOVERED)
-                        except:
-                            print('Error : ', sys.exc_info()[0])
+                        for module in self.dynamic_modules :
+                            module.analysed(url_str,html_data,parent_url)
+                        self.db.insertUrl(url_str,WebSoupCrawler.STATE_DISCOVERED)
 
     def extract_data (self,html_data,parent_url) :
         htmlparse = BeautifulSoup(html_data,'html.parser')
@@ -211,12 +209,9 @@ class WebSoupCrawler() :
             rows=self.db.countUrl_databyUrlAndData(parent_url,str(data))
             for row in rows :
                 if row[0] == 0 :
-                    try :
-                        for module in self.dynamic_modules :
-                            module.extracted(data,html_data,parent_url)
-                        self.db.insertUrl_data(parent_url,str(data))
-                    except:
-                        print('Error : ', sys.exc_info()[0])
+                    for module in self.dynamic_modules :
+                        module.extracted(data,html_data,parent_url)
+                    self.db.insertUrl_data(parent_url,str(data))
 
     def to_follow_url(self,currenturl) :
         if self.follow_url :
@@ -252,7 +247,11 @@ class WebSoupCrawler() :
         html=""
         cached=False;
         if self.cache == True :
-            cachefilename=hashlib.sha256(self.url.encode()).hexdigest()+"_"+hashlib.sha256(url.encode()).hexdigest()+".html"
+            #cachefilename=urllib.parse.quote_plus(url)+".html"
+
+            url_parsed=urlparse(url)
+            cachefilename=urllib.parse.quote_plus(url_parsed.netloc)+"_"+hashlib.sha512(url.encode()).hexdigest()+".html"
+
             cache_path=WebSoupCrawler.CACHE_PATH+cachefilename
             if os.path.isfile(cache_path) == True :
                 with open(cache_path, 'r') as cache_file:
