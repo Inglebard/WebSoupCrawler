@@ -103,8 +103,8 @@ class WebSoupCrawler() :
             if self.process == WebSoupCrawler.PROCESS_ANALYSE :
                 try :
                     html =  requests.get(self.url).text
-                except e :
-                    print(e.reason)
+                except :
+                    print('Error : ', sys.exc_info()[0])
                     sys.exit(1)
 
                 try :
@@ -165,8 +165,8 @@ class WebSoupCrawler() :
                             try :
                                 htmlresult =  requests.get(datarow[1]).text
                                 self.store_url(htmlresult,urlparse(datarow[1]))
-                            except e :
-                                print(e.reason)
+                            except :
+                                print('Error : ', sys.exc_info()[0])
                             self.cur.execute('''UPDATE `Url` SET `state`=? WHERE id=?''',(WebSoupCrawler.STATE_ANALYSED,datarow[0]))
                             self.con.commit()
 
@@ -174,8 +174,8 @@ class WebSoupCrawler() :
                             try :
                                 htmlresult =  requests.get(datarow[1]).text
                                 self.extract_data(htmlresult,datarow[1])
-                            except e :
-                                print(e.reason)
+                            except :
+                                print('Error : ', sys.exc_info()[0])
                             self.cur.execute('''UPDATE `Url` SET `state`=? WHERE id=?''',(WebSoupCrawler.STATE_EXTRACTED,datarow[0]))
                             self.con.commit()
                         time.sleep(self.delay)
@@ -212,8 +212,8 @@ class WebSoupCrawler() :
                                 module.analysed(url_str,html_data,parent_url)
                             self.cur.execute('''INSERT INTO `Url`(`url`, `state`) VALUES (?,?)''',(url_str,WebSoupCrawler.STATE_DISCOVERED))
                             self.con.commit()
-                        except e:
-                            print('Error : ', e.reason)
+                        except:
+                            print('Error : ', sys.exc_info()[0])
 
     def extract_data (self,html_data,parent_url) :
         htmlparse = BeautifulSoup(html_data,'html.parser')
@@ -230,8 +230,8 @@ class WebSoupCrawler() :
                             module.extracted(data,html_data,parent_url)
                         self.cur.execute('''INSERT INTO `Url_data`(`url`, `data`) VALUES (?,?)''',(parent_url,str(data)))
                         self.con.commit()
-                    except e:
-                        print('Error : ', e.reason)
+                    except:
+                        print('Error : ', sys.exc_info()[0])
 
     def to_follow_url(self,currenturl) :
         if self.follow_url :

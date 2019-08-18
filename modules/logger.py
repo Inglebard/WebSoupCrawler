@@ -6,4 +6,4 @@ class logger:
         print("Analysed : "+parent_url.geturl()+", discovered : "+url)
 
     def extracted(self, data, html_data, parent_url):
-        print("Extraced from " + parent_url + " : "+str(data))
+        print("Extracted from " + parent_url + " : "+str(data))
