@@ -79,6 +79,8 @@ class WebSoupCrawler() :
         parser.add_argument('-e', '--exclude_url', metavar='exclude_url', default="", type=str, help="Exclude url (regex) to follow. Default : Current domain only")
 
         parser.add_argument('-c', '--cache', action='store_true', required=False,  help="Cache html result when requested.Can improve performance but will use disk space. Default : False")
+        parser.add_argument('-ct', '--cache_timeout', metavar='cache_timeout', default=0, type=int, help="Cache timeout in seconds. Default : 0 (no timeout)")
+
         parser.add_argument('-db', '--database', metavar='database', type=str, help="Sqlite database to store result", required=True)
         parser.add_argument('-db_l', '--database_limit', metavar='limit', default=100, type=int, help="Limit request to database. Allow multiple instance Default: 100")
         parser.add_argument('-db_d', '--database_driver', metavar='database_driver', default="sqlite", choices=['sqlite', 'mysql', 'mongodb'], help="Select database type ('sqlite', 'mysql', 'mongodb)")
@@ -98,6 +100,8 @@ class WebSoupCrawler() :
         self.exclude_url=args.exclude_url
 
         self.cache=args.cache;
+        self.cache_timeout=args.cache_timeout;
+
         self.database_limit=args.database_limit
         self.database_driver=args.database_driver;
         self.database_host=args.database_host
@@ -252,14 +256,14 @@ class WebSoupCrawler() :
             url_parsed=urlparse(url)
             cachefilename=urllib.parse.quote_plus(url_parsed.netloc)+"_"+hashlib.sha512(url.encode()).hexdigest()+".html"
 
-            cache_path=WebSoupCrawler.CACHE_PATH+cachefilename
-            if os.path.isfile(cache_path) == True :
-                with open(cache_path, 'r') as cache_file:
+            cache_file_path=WebSoupCrawler.CACHE_PATH+cachefilename
+            if os.path.isfile(cache_file_path) == True and (self.cache_timeout == 0 or (time.time() - os.path.getmtime(cache_file_path)) < self.cache_timeout) :
+                with open(cache_file_path, 'r') as cache_file:
                     html = cache_file.read()
                     cached=True
             else :
                 html=self.request_data(url)
-                with open(cache_path, 'w') as cache_file:
+                with open(cache_file_path, 'w') as cache_file:
                     cache_file.write(html)
         else :
             html=self.request_data(url)
