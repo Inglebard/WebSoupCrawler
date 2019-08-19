@@ -31,8 +31,8 @@ class Database_mysql() :
             self.cur.execute('SELECT version()')
             data = self.cur.fetchone()
             print(data)
-            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, state integer, process integer) character set utf8 collate utf8mb4_general_ci;''')
-            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url_data(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, data text) character set utf8 collate utf8mb4_general_ci 	;''')
+            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, state_analyse TINYINT(2) NOT NULL DEFAULT '0', state_extract TINYINT(2) NOT NULL DEFAULT '0') ENGINE = InnoDB character set utf8mb4 collate utf8mb4_general_ci;''')
+            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url_data(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, data text) character set utf8mb4 collate utf8mb4_general_ci;''')
             self.con.commit()
         except mysql.connector.Error as err:
             if self.con :
@@ -46,32 +46,52 @@ class Database_mysql() :
 
 
 
-    def getUrlbyState(self,state) :
-        self.cur.execute('''SELECT * FROM `Url` WHERE state=%s LIMIT %s''',(state,self.database_limit))
+    def getUrlToAnalyse(self) :
+        self.cur.execute('''SELECT * FROM `Url` WHERE `state_analyse`=0 LIMIT %s''',(self.database_limit,))
         return self.cur.fetchall()
 
-    def getUrlbyStateAndId(self,state,id) :
-        self.cur.execute('''SELECT * FROM `Url` WHERE state=%s and id=%s''',(state,id))
-        return self.cur.fetchone()
+    def getUrlToExtract(self) :
+        self.cur.execute('''SELECT * FROM `Url` WHERE `state_extract`=0 LIMIT %s''',(self.database_limit,))
+        return self.cur.fetchall()
 
-    def updateUrlbyStateAndId(self,state,id) :
-        self.cur.execute('''UPDATE `Url` SET `state`=%s WHERE id=%s''',(state,id))
+    def updateUrlAnalyzingByIds(self,ids) :
+        self.cur.executemany('''UPDATE `Url` SET `state_analyse`=1 WHERE `id`=%s''',ids)
+        return self.con.commit()
+
+    def updateUrlExtractingByIds(self,ids) :
+        self.cur.executemany('''UPDATE `Url` SET `state_extract`=1 WHERE `id`=%s''',ids)
+        return self.con.commit()
+
+    def updateUrlAnalysed(self,id) :
+        self.cur.execute('''UPDATE `Url` SET `state_analyse`=3 WHERE `id`=%s''',(id,))
+        return self.con.commit()
+
+    def updateUrlExtracted(self,id) :
+        self.cur.execute('''UPDATE `Url` SET `state_extract`=3 WHERE `id`=%s''',(id,))
         return self.con.commit()
 
     def countUrlbyUrl(self,url) :
-        self.cur.execute('SELECT count(*) as "nb_url" FROM `Url` WHERE url=%s',(url,))
+        self.cur.execute('SELECT count(*) as "nb_url" FROM `Url` WHERE `url`=%s',(url,))
         return self.cur.fetchall()
 
-    def insertUrl(self,url,state) :
-        self.cur.execute('''INSERT INTO `Url`(`url`, `state`) VALUES (%s,%s)''',(url,state))
+    def insertUrl(self,url) :
+        self.cur.execute('''INSERT INTO `Url`(`url`) VALUES (%s)''',(url,))
         return self.con.commit()
 
     def countUrl_databyUrlAndData(self,url,data) :
-        self.cur.execute('SELECT count(*) as "nb_result" FROM `Url_data` WHERE url=%s AND data=%s',(url,data))
+        self.cur.execute('SELECT count(*) as "nb_result" FROM `Url_data` WHERE `url`=%s AND `data`=%s',(url,data))
         return self.cur.fetchall()
 
     def insertUrl_data(self,url,data) :
         self.cur.execute('''INSERT INTO `Url_data`(`url`, `data`) VALUES (%s,%s)''',(url,data))
+        return self.con.commit()
+
+    def resetAnalysing(self) :
+        self.cur.execute('''UPDATE `Url` SET `state_analyse`=0 WHERE `state_analyse`=1''')
+        return self.con.commit()
+
+    def resetExtracting(self) :
+        self.cur.execute('''UPDATE `Url` SET `state_extract`=0 WHERE `state_extract`=1''')
         return self.con.commit()
 
     def close(self) :

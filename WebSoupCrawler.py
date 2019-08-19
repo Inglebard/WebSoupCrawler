@@ -78,6 +78,9 @@ class WebSoupCrawler() :
         parser.add_argument('-f', '--follow_url', metavar='follow_url', default="", type=str, help="Add url (regex) to follow. Default : Current domain only")
         parser.add_argument('-e', '--exclude_url', metavar='exclude_url', default="", type=str, help="Exclude url (regex) to follow. Default : Current domain only")
 
+        parser.add_argument('-ra', '--reset_analyzing', action='store_true', required=False,  help="Reset analyzing state to 0. Default : False")
+        parser.add_argument('-re', '--reset_extracting', action='store_true', required=False,  help="Reset extracting state to 0. Default : False")
+
         parser.add_argument('-c', '--cache', action='store_true', required=False,  help="Cache html result when requested.Can improve performance but will use disk space. Default : False")
         parser.add_argument('-ct', '--cache_timeout', metavar='cache_timeout', default=0, type=int, help="Cache timeout in seconds. Default : 0 (no timeout)")
 
@@ -98,6 +101,9 @@ class WebSoupCrawler() :
         self.selector=args.selector;
         self.follow_url=args.follow_url;
         self.exclude_url=args.exclude_url
+
+        self.reset_analyzing=args.reset_analyzing
+        self.reset_extracting=args.reset_extracting
 
         self.cache=args.cache;
         self.cache_timeout=args.cache_timeout;
@@ -125,6 +131,11 @@ class WebSoupCrawler() :
 
         self.db=Database(os.path.join(os.path.dirname(os.path.abspath(__file__)),WebSoupCrawler.DATA_PATH),self.database,self.database_driver,self.database_limit,self.database_host,self.database_user,self.database_password,self.database_port).getDatabase()
 
+        if self.reset_analyzing == True :
+            self.db.resetAnalysing()
+
+        if self.reset_extracting == True :
+            self.db.resetExtracting()
 
         if self.process == WebSoupCrawler.PROCESS_ANALYSE :
             html,cached =  self.fetch_data(self.url)
@@ -140,37 +151,39 @@ class WebSoupCrawler() :
         continue_loop=True
         while continue_loop :
             result = ()
-            rows=''
+            rows=[]
             if self.process == WebSoupCrawler.PROCESS_ANALYSE :
-                rows=self.db.getUrlbyState(WebSoupCrawler.STATE_DISCOVERED)
+                rows=self.db.getUrlToAnalyse()
             elif self.process == WebSoupCrawler.PROCESS_EXTRACT :
-                rows=self.db.getUrlbyState(WebSoupCrawler.STATE_ANALYSED)
+                rows=self.db.getUrlToExtract()
 
             print(len(rows))
             if len(rows) <= 0 :
                 continue_loop = False
             else :
                 continue_loop = True
+
+                ids = [(item[0],) for item in rows]
+                if self.process == WebSoupCrawler.PROCESS_ANALYSE :
+                    self.db.updateUrlAnalyzingByIds(ids)
+                elif self.process == WebSoupCrawler.PROCESS_EXTRACT :
+                    self.db.updateUrlExtractingByIds(ids)
+
                 for row in rows :
                     datarow=()
-                    result2=()
 
-                    if self.process == WebSoupCrawler.PROCESS_ANALYSE :
-                        datarow=self.db.getUrlbyStateAndId(WebSoupCrawler.STATE_DISCOVERED,row[0])
-                    elif self.process == WebSoupCrawler.PROCESS_EXTRACT :
-                        datarow=self.db.getUrlbyStateAndId(WebSoupCrawler.STATE_ANALYSED,row[0])
-
+                    datarow = row
                     if datarow:
                         cached=False
-                        if self.process == WebSoupCrawler.PROCESS_ANALYSE and datarow[2] == WebSoupCrawler.STATE_DISCOVERED:
+                        if self.process == WebSoupCrawler.PROCESS_ANALYSE and datarow[2] == 0:
                             htmlresult, cached =  self.fetch_data(datarow[1])
                             self.store_url(htmlresult,urlparse(datarow[1]))
-                            self.db.updateUrlbyStateAndId(WebSoupCrawler.STATE_ANALYSED,datarow[0])
+                            self.db.updateUrlAnalysed(datarow[0])
 
-                        if self.process == WebSoupCrawler.PROCESS_EXTRACT and datarow[2] == WebSoupCrawler.STATE_ANALYSED:
+                        if self.process == WebSoupCrawler.PROCESS_EXTRACT and datarow[3] == 0:
                             htmlresult, cached = self.fetch_data(datarow[1])
                             self.extract_data(htmlresult,datarow[1])
-                            self.db.updateUrlbyStateAndId(WebSoupCrawler.STATE_EXTRACTED,datarow[0])
+                            self.db.updateUrlExtracted(datarow[0])
                         if not cached :
                             time.sleep(self.delay)
 
@@ -202,7 +215,7 @@ class WebSoupCrawler() :
                     if row[0] == 0 :
                         for module in self.dynamic_modules :
                             module.analysed(url_str,html_data,parent_url)
-                        self.db.insertUrl(url_str,WebSoupCrawler.STATE_DISCOVERED)
+                        self.db.insertUrl(url_str)
 
     def extract_data (self,html_data,parent_url) :
         htmlparse = BeautifulSoup(html_data,'html.parser')
