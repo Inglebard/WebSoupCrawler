@@ -31,8 +31,8 @@ class Database_mysql() :
             self.cur.execute('SELECT version()')
             data = self.cur.fetchone()
             print(data)
-            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, state integer, process integer)''')
-            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url_data(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, data text)''')
+            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, state integer, process integer) character set utf8 collate utf8mb4_general_ci;''')
+            self.cur.execute('''CREATE TABLE IF NOT EXISTS Url_data(id integer NOT NULL PRIMARY KEY AUTO_INCREMENT, url text, data text) character set utf8 collate utf8mb4_general_ci 	;''')
             self.con.commit()
         except mysql.connector.Error as err:
             if self.con :
