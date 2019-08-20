@@ -81,11 +81,12 @@ class WebSoupCrawler() :
         parser.add_argument('-ra', '--reset_analyzing', action='store_true', required=False,  help="Reset analyzing state to 0. Default : False")
         parser.add_argument('-re', '--reset_extracting', action='store_true', required=False,  help="Reset extracting state to 0. Default : False")
 
-        parser.add_argument('-c', '--cache', action='store_true', required=False,  help="Cache html result when requested.Can improve performance but will use disk space. Default : False")
+        parser.add_argument('-c', '--cache', action='store_true', required=False,  help="Cache html result when requested. Can improve performance but will use disk space. Default : False")
+        parser.add_argument('-cfl', '--cache_filename_limit', metavar='cache_filename_limit', default=0, type=int, help="Limit cache filename size. Default: 0")
         parser.add_argument('-ct', '--cache_timeout', metavar='cache_timeout', default=0, type=int, help="Cache timeout in seconds. Default : 0 (no timeout)")
 
         parser.add_argument('-db', '--database', metavar='database', type=str, help="Sqlite database to store result", required=True)
-        parser.add_argument('-db_l', '--database_limit', metavar='limit', default=100, type=int, help="Limit request to database. Allow multiple instance Default: 100")
+        parser.add_argument('-db_l', '--database_limit', metavar='limit', default=100, type=int, help="Limit request to database. Allow multiple instances. Default: 100")
         parser.add_argument('-db_d', '--database_driver', metavar='database_driver', default="sqlite", choices=['sqlite', 'mysql', 'mongodb'], help="Select database type ('sqlite', 'mysql', 'mongodb)")
         parser.add_argument('-db_h', '--database_host', metavar='database_host', default="localhost", type=str, help="Database host. Default: localhost")
         parser.add_argument('-db_u', '--database_user', metavar='database_user', default="", type=str, help="Database user")
@@ -106,6 +107,7 @@ class WebSoupCrawler() :
         self.reset_extracting=args.reset_extracting
 
         self.cache=args.cache;
+        self.cache_filename_limit=args.cache_filename_limit;
         self.cache_timeout=args.cache_timeout;
 
         self.database_limit=args.database_limit
@@ -267,7 +269,10 @@ class WebSoupCrawler() :
             #cachefilename=urllib.parse.quote_plus(url)+".html"
 
             url_parsed=urlparse(url)
-            cachefilename=urllib.parse.quote_plus(url_parsed.netloc)+"_"+hashlib.sha512(url.encode()).hexdigest()+".html"
+            #cachefilename=urllib.parse.quote_plus(url_parsed.netloc)+"_"+hashlib.sha512(url.encode()).hexdigest()+".html"
+            cachefilename=urllib.parse.quote_plus(url)
+            if self.cache_filename_limit != 0 :
+                cachefilename=cachefilename[:self.cache_filename_limit]
 
             cache_file_path=WebSoupCrawler.CACHE_PATH+cachefilename
             if os.path.isfile(cache_file_path) == True and (self.cache_timeout == 0 or (time.time() - os.path.getmtime(cache_file_path)) < self.cache_timeout) :
